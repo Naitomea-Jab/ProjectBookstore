@@ -1,9 +1,7 @@
 # main.py
-from turtledemo.paint import switchupdown
-
-from bookstore.customer_Manager import get_customers
 from bookstore.book_Manager import get_book, add_book, remove_book
-from frontend.gui import startGui
+from bookstore.customer_Manager import register_customer, get_customers, get_addresses, remove_customer, buy_book
+
 
 def __main__():
     initialize_menu()
@@ -13,11 +11,15 @@ def initialize_menu():
         print("1. Add book")
         print("2. remove book")
         print("3. get book")
+        print("4. register new customer")
+        print("5. remove customer")
+        print("6. buy book")
+        print("7. all customers")
+        print("8. all addresses")
         print("9. quit")
         choice = int(input("Wpisz numer: "))
         match choice:
             case 1:
-                #do a questions and then pack answers into an array
                 author = input("Wpisz author: ")
                 title = input("Wpisz title: ")
                 amount = int(input("Wpisz amount: "))
@@ -35,6 +37,62 @@ def initialize_menu():
                 if not info.strip():
                     info = None
                 result = get_book(info)
+                if result["code"] == 200:
+                    for b in result["data"]:
+                        print(b)
+                else:
+                    print(result["message"])
+
+            case 4:
+                print("Personalne informacje")
+                name = input("Wpisz imie i nazwisko: ")
+                email = input("Wpisz email: ")
+                phone = input("Wpisz numer telefonu: ")
+                print("Adres")
+                street = input("Wpisz ulicę: ")
+                city = input("Wpisz miasto: ")
+                country = input("Wpisz kraj: ")
+                clientInfo = [name, email, phone]
+                addressInfo = [street, city, country]
+                register_customer(clientInfo, addressInfo)
+
+            case 5:
+                infoToDelete = input("Wprowadz ID lub pełne imie klienta do usunięcia: ")
+                result = remove_customer(infoToDelete)
+                if result["code"] == 404:
+                    print(result["message"])
+
+            case 6:
+                customer_id = input("Wpisz ID lub pełne imie klienta: ")
+                result = get_customers(customer_id)
+                if result["code"] == 404:
+                    print(result["message"])
+                    continue
+                customer_id = result["data"][0][0]
+                book_id = input("Wpisz ID lub tytuł książki do zakupu: ")
+                book_data = get_book(book_id)
+                if book_data["code"] == 404:
+                    print(book_data["message"])
+                    continue
+                months_to_buy = input("Wpisz na ile miesięcy chcesz kupić książkę: ")
+                buy_book(customer_id, book_data["data"][0], months_to_buy)
+
+
+            case 7:
+                info = input("Wprowadz ID lub pełne imie klienta do wypisania, brak wypisze wszystkie: ")
+                if not info.strip():
+                    info = None
+                result = get_customers(info)
+                if result["code"] == 200:
+                    for b in result["data"]:
+                        print(b)
+                else:
+                    print(result["message"])
+            case 8:
+                info = input("Wprowadz ID lub pełne imie do wypisania adresu, brak wypisze wszystkie: ")
+                if not info.strip():
+                    info = None
+                result = get_addresses(info)
                 if result["code"] == 200:
                     for b in result["data"]:
                         print(b)
