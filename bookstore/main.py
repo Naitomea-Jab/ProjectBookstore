@@ -1,10 +1,11 @@
 # main.py
 from bookstore.book_Manager import get_book, add_book, remove_book
 from bookstore.customer_Manager import register_customer, get_customers, get_addresses, remove_customer, buy_book
-
+from frontend.gui import start_gui
 
 def __main__():
-    initialize_menu()
+    start_gui()
+    # initialize_menu()
 
 def initialize_menu():
     while True:

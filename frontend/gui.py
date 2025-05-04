@@ -1,3 +1,3 @@
 # gui.py
-def startGui():
+def start_gui():
     print("hello Cirno")
