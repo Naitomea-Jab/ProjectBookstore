@@ -1,313 +1,590 @@
-# API Dokumentacja
+# Dokumentacja API Systemu Księgarni
 
 ## Spis treści
-- [Zarządzanie książkami](#zarządzanie-książkami)
-  - [get_book](#funkcja-get_book)
-  - [add_book](#funkcja-add_book)
-  - [remove_book](#funkcja-remove_book)
-- [Zarządzanie klientami](#zarządzanie-klientami)
-  - [get_customers](#funkcja-get_customers)
-  - [get_addresses](#funkcja-get_addresses)
-  - [register_customer](#funkcja-register_customer)
-  - [remove_customer](#funkcja-remove_customer)
-  - [buy_book](#funkcja-buy_book)
+1. [Zarządzanie Książkami](#zarządzanie-książkami)
+2. [Zarządzanie Klientami](#zarządzanie-klientami)
+3. [Monitorowanie i Statystyki](#monitorowanie-i-statystyki)
+4. [Zarządzanie Plikami](#zarządzanie-plikami)
+5. [Narzędzia Pomocnicze](#narzędzia-pomocnicze)
+6. [Struktury Danych](#struktury-danych)
+7. [Kody Odpowiedzi](#kody-odpowiedzi)
 
-## Zarządzanie książkami
+---
 
-### Funkcja `get_book`
+## Zarządzanie Książkami
 
-#### Opis
-Funkcja `get_book` pobiera książki z bazy danych. Można pobrać wszystkie książki, książki o określonym ID lub książki o określonym tytule.
+### `get_book(data=None)`
+**Opis:** Pobiera książki z bazy danych.
 
-#### Argumenty
-- **data** (*str, opcjonalny*): ID książki (jako string) lub tytuł książki (jako string). Jeśli brak argumentu (domyślnie `None`), funkcja zwróci wszystkie książki.
+**Parametry:**
+- `data` (str, optional): ID książki lub tytuł książki. Jeśli None, pobiera wszystkie książki.
 
-#### Zwracane wartości
-Funkcja zwraca słownik z danymi o książkach w następującym formacie:
-
-- **code** (*int*): Kod HTTP. 
-  - `200` – jeśli książki zostały znalezione,
-  - `404` – jeśli brak wyników.
-  
-- **message** (*str*): Komunikat o wyniku operacji (np. "OK" lub "Nie znaleziono książki do wypisania").
-  
-- **data** (*list*, jeśli `code = 200`): Lista krotek zawierających dane o książkach. Każda krotka zawiera:
-  - **ID** (*int*): ID książki.
-  - **AUTHOR** (*str*): Autor książki.
-  - **TITLE** (*str*): Tytuł książki.
-  - **NO_EBOOK_AVAILABLE** (*int*): Liczba dostępnych egzemplarzy.
-  - **CREATED** (*str*): Data utworzenia książki.
-  - **UPDATED** (*str*): Data ostatniej aktualizacji książki.
-
-#### Przykład użycia
-
-##### Pobranie wszystkich książek:
+**Zwraca:**
 ```python
-result = get_book()
-if result["code"] == 200:
-    for book in result["data"]:
-        print(book)
+{
+    "code": int,          # 200 (sukces), 404 (brak wyników), 500 (błąd)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek z danymi książek (tylko przy code=200)
+}
 ```
 
-##### Pobranie książki o określonym ID:
-```python
-result = get_book("5")
-if result["code"] == 200:
-    for book in result["data"]:
-        print(book)
+**Struktura danych książki:**
+```
+(BookID, Title, Author, Genre, Price, Stock, DateAdded)
 ```
 
-##### Pobranie książki o określonym tytule:
+**Przykłady użycia:**
 ```python
-result = get_book("Władca Pierścieni")
-if result["code"] == 200:
-    for book in result["data"]:
-        print(book)
+# Wszystkie książki
+get_book()
+
+# Książka po ID
+get_book("1")
+
+# Książki po tytule (częściowe dopasowanie)
+get_book("Harry Potter")
 ```
 
-### Funkcja `add_book`
+---
 
-#### Opis
-Funkcja `add_book` dodaje nową książkę do bazy danych.
+### `add_book(bookInfo)`
+**Opis:** Dodaje nową książkę do bazy danych. Funkcja jest ozdobiona dekoratorem `@log_performance`.
 
-#### Argumenty
-- **bookInfo** (*list*): Lista zawierająca informacje o książce w następującej kolejności:
-  - **author** (*str*): Imię i nazwisko autora.
-  - **title** (*str*): Tytuł książki.
-  - **amount** (*int*): Liczba dostępnych egzemplarzy (musi być >= 0).
+**Parametry:**
+- `bookInfo` (dict): Słownik z informacjami o książce
 
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
-
-- **code** (*int*): Kod HTTP-stylu.
-  - `201` – jeśli książka została pomyślnie dodana,
-  - `400` – jeśli podano niepoprawną ilość egzemplarzy.
-
-- **message** (*str*): Komunikat informujący o wyniku operacji.
-
-#### Przykład użycia
+**Wymagane pola w `bookInfo`:**
 ```python
-new_book = ["J.K. Rowling", "Harry Potter i Kamień Filozoficzny", 10]
-result = add_book(new_book)
-print(result["code"])
+{
+    "Title": str,      # Tytuł książki
+    "Author": str,     # Autor książki
+    "Genre": str,      # Gatunek książki (opcjonalnie)
+    "Price": float,    # Cena książki (≥ 0)
+    "Stock": int       # Stan magazynowy (≥ 0)
+}
 ```
 
-### Funkcja `remove_book`
-
-#### Opis
-Funkcja `remove_book` usuwa książkę z bazy danych na podstawie ID lub tytułu.
-
-#### Argumenty
-- **data** (*str*): ID książki (liczba całkowita jako string) lub tytuł (string) książki do usunięcia.
-
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
-
-- **code** (*int*): Kod HTTP-stylu.
-  - `200` – jeśli usunięto książkę,
-  - `404` – jeśli nie znaleziono książki do usunięcia.
-
-- **message** (*str*): Komunikat opisujący wynik operacji.
-
-#### Przykład użycia
-
-##### Usunięcie książki po ID:
+**Zwraca:**
 ```python
-result = remove_book("5")
-print(result["code"])
+{
+    "code": int,          # 201 (sukces), 400 (błąd walidacji), 409 (konflikt), 500 (błąd bazy)
+    "message": str        # Komunikat o wyniku operacji
+}
 ```
 
-##### Usunięcie książki po tytule:
+---
+
+### `remove_book(data)`
+**Opis:** Usuwa książkę z bazy danych.
+
+**Parametry:**
+- `data` (str): ID książki lub tytuł książki
+
+**Zwraca:**
 ```python
-result = remove_book("Harry Potter i Kamień Filozoficzny")
-print(result["code"])
+{
+    "code": int,          # 200 (sukces), 404 (nie znaleziono), 500 (błąd bazy)
+    "message": str        # Komunikat o wyniku operacji
+}
 ```
 
-## Zarządzanie klientami
+---
 
-### Funkcja `get_customers`
+### `update_book_stock(book_id, quantity_change)`
+**Opis:** Aktualizuje stan magazynowy książki.
 
-#### Opis
-Pobiera klientów z bazy danych. Można pobrać wszystkich klientów, klientów o określonym ID lub klientów o określonym imieniu i nazwisku.
+**Parametry:**
+- `book_id` (int): ID książki
+- `quantity_change` (int): Zmiana ilości (może być ujemna)
 
-#### Argumenty
-- **data** (*str, opcjonalny*): ID klienta (jako string) lub imię i nazwisko klienta (jako string). Jeśli brak argumentu (domyślnie `None`), pobierani są wszyscy klienci.
-
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
-
-- **code** (*int*): Kod HTTP.
-  - `200` – jeśli klienci zostali znalezieni,
-  - `404` – jeśli brak wyników.
-
-- **message** (*str*): Komunikat o wyniku operacji (np. "OK" lub "Nie znaleziono klienta do wypisania").
-
-- **data** (*list*, jeżeli `code = 200`): Lista krotek zawierających dane o klientach. Każda krotka zawiera:
-  - **ID** (*int*): ID klienta.
-  - **NAME** (*str*): Imię i nazwisko klienta.
-  - **E-MAIL** (*str*): Adres email klienta.
-  - **PHONE** (*str*): Numer telefonu klienta.
-  - **CREATED** (*str*): Data utworzenia klienta.
-  - **UPDATED** (*str*): Data ostatniej aktualizacji klienta.
-
-#### Przykład użycia
-
-##### Pobranie wszystkich klientów:
+**Zwraca:**
 ```python
-result = get_customers()
-if result["code"] == 200:
-    for customer in result["data"]:
-        print(customer)
+{
+    "code": int,          # 200 (sukces), 400 (błąd walidacji), 404 (nie znaleziono), 500 (błąd bazy)
+    "message": str        # Komunikat o wyniku operacji
+}
 ```
 
-##### Pobranie klienta o określonym ID:
+---
+
+## Zarządzanie Klientami
+
+### `get_customers(data=None)`
+**Opis:** Pobiera klientów z bazy danych.
+
+**Parametry:**
+- `data` (str, optional): ID klienta (UUID format) lub imię i nazwisko. Jeśli None, pobiera wszystkich klientów.
+
+**Zwraca:**
 ```python
-result = get_customers("5")
-if result["code"] == 200:
-    for customer in result["data"]:
-        print(customer)
+{
+    "code": int,          # 200 (sukces), 404 (brak wyników), 500 (błąd)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek z danymi klientów (tylko przy code=200)
+}
 ```
 
-##### Pobranie klienta o określonym imieniu i nazwisku:
-```python
-result = get_customers("Jan Kowalski")
-if result["code"] == 200:
-    for customer in result["data"]:
-        print(customer)
+**Struktura danych klienta:**
+```
+(CustomerID, Name, Email)
 ```
 
-### Funkcja `get_addresses`
+---
 
-#### Opis
-Pobiera adresy klientów z bazy danych. Można pobrać wszystkie adresy, adres dla określonego ID klienta lub adres dla klienta o określonym imieniu i nazwisku.
+### `register_customer(clientInfo)`
+**Opis:** Rejestruje nowego klienta w bazie danych.
 
-#### Argumenty
-- **data** (*str, opcjonalny*): ID klienta (jako string) lub imię i nazwisko klienta (jako string). Jeśli brak argumentu (domyślnie `None`), pobierane są wszystkie adresy.
+**Parametry:**
+- `clientInfo` (dict): Słownik z informacjami o kliencie
 
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
-
-- **code** (*int*): Kod HTTP.
-  - `200` – jeśli adresy zostały znalezione,
-  - `404` – jeśli brak wyników.
-
-- **message** (*str*): Komunikat o wyniku operacji (np. "OK" lub "Nie znaleziono adresu do wypisania").
-
-- **data** (*list*, jeżeli `code = 200`): Lista krotek zawierających dane o adresach. Każda krotka zawiera:
-  - **ID** (*int*): ID klienta, do którego należy adres.
-  - **STREET** (*str*): Nazwa ulicy.
-  - **CITY** (*str*): Nazwa miasta.
-  - **COUNTRY** (*str*): Nazwa kraju.
-
-#### Przykład użycia
-
-##### Pobranie wszystkich adresów:
+**Wymagane pola w `clientInfo`:**
 ```python
-result = get_addresses()
-if result["code"] == 200:
-    for address in result["data"]:
-        print(address)
+{
+    "Name": str,       # Imię i nazwisko klienta
+    "Email": str       # Adres email klienta (unikalny)
+}
 ```
 
-##### Pobranie adresu dla określonego ID klienta:
+**Zwraca:**
 ```python
-result = get_addresses("5")
-if result["code"] == 200:
-    for address in result["data"]:
-        print(address)
+{
+    "code": int,          # 201 (sukces), 400 (błąd walidacji), 409 (konflikt), 500 (błąd bazy)
+    "message": str        # Komunikat zawierający ID nowego klienta
+}
 ```
 
-##### Pobranie adresu dla klienta o określonym imieniu i nazwisku:
+---
+
+### `remove_customer(data)`
+**Opis:** Usuwa klienta z bazy danych wraz z jego zakupami (transakcja atomowa).
+
+**Parametry:**
+- `data` (str): ID klienta (UUID) lub imię i nazwisko
+
+**Zwraca:**
 ```python
-result = get_addresses("Jan Kowalski")
-if result["code"] == 200:
-    for address in result["data"]:
-        print(address)
+{
+    "code": int,          # 200 (sukces), 404 (nie znaleziono), 500 (błąd bazy)
+    "message": str        # Komunikat o liczbie usuniętych rekordów
+}
 ```
 
-### Funkcja `register_customer`
+---
 
-#### Opis
-Rejestruje nowego klienta w bazie danych wraz z jego adresem.
+### `buy_book(customer_data, book_data, quantity)`
+**Opis:** Obsługuje proces zakupu książki (transakcja atomowa).
 
-#### Argumenty
-- **clientInfo** (*list*): Lista zawierająca informacje o kliencie w kolejności:
-  - **name** (*str*): Imię i nazwisko klienta.
-  - **email** (*str*): Adres email klienta.
-  - **phone** (*str*): Numer telefonu klienta.
-- **addressInfo** (*list*): Lista zawierająca informacje o adresie klienta w kolejności:
-  - **street** (*str*): Nazwa ulicy.
-  - **city** (*str*): Nazwa miasta.
-  - **country** (*str*): Nazwa kraju.
+**Parametry:**
+- `customer_data` (str): ID klienta lub imię i nazwisko
+- `book_data` (str): ID książki lub tytuł książki
+- `quantity` (int): Liczba kupowanych książek
 
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
-
-- **code** (*int*): Kod HTTP-stylu. `201` jeśli klient został zarejestrowany pomyślnie.
-- **message** (*str*): Komunikat informujący o wyniku operacji.
-
-#### Przykład użycia
+**Zwraca:**
 ```python
-client_info = ["Jan Kowalski", "jan@example.com", "123456789"]
-address_info = ["ul. Kwiatowa 5", "Warszawa", "Polska"]
-result = register_customer(client_info, address_info)
-print(result["code"])
+{
+    "code": int,          # 200 (sukces), 400 (błąd walidacji), 404 (nie znaleziono), 500 (błąd bazy)
+    "message": str        # Komunikat o wyniku operacji
+}
 ```
 
-### Funkcja `remove_customer`
+**Walidacja:**
+- Sprawdza dostępność książki w magazynie
+- Automatycznie aktualizuje stan magazynowy
+- Zapisuje transakcję z aktualną datą
 
-#### Opis
-Usuwa klienta i jego adres z bazy danych na podstawie ID lub imienia i nazwiska.
+---
 
-#### Argumenty
-- **data** (*str*): ID klienta (liczba całkowita jako string) lub imię i nazwisko klienta (string) do usunięcia.
+### `get_customer_purchases(customer_data)`
+**Opis:** Pobiera historię zakupów dla konkretnego klienta.
 
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
+**Parametry:**
+- `customer_data` (str): ID klienta lub imię i nazwisko
 
-- **code** (*int*): Kod HTTP-stylu.
-  - `200` – jeśli usunięto klienta,
-  - `404` – jeśli nie znaleziono klienta do usunięcia.
-
-- **message** (*str*): Komunikat opisujący wynik operacji.
-
-#### Przykład użycia
-
-##### Usunięcie klienta po ID:
+**Zwraca:**
 ```python
-result = remove_customer("5")
-print(result["code"])
+{
+    "code": int,          # 200 (sukces), 404 (nie znaleziono), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek z danymi zakupów (tylko przy code=200)
+}
 ```
 
-##### Usunięcie klienta po imieniu i nazwisku:
-```python
-result = remove_customer("Jan Kowalski")
-print(result["code"])
+**Struktura danych zakupu:**
+```
+(PurchaseID, CustomerName, BookTitle, Quantity, PurchaseDate, BookPrice)
 ```
 
-### Funkcja `buy_book`
+---
 
-#### Opis
-Zakup książki przez klienta, zapisując informację o zakupie do pliku tekstowego klienta.
+## Monitorowanie i Statystyki
 
-#### Argumenty
-- **client_id** (*int*): ID klienta dokonującego zakupu.
-- **book_data** (*list*): Lista zawierająca dane o książce (powinna zawierać ID i tytuł na indeksach 0 i 2).
-- **duration** (*str*): Czas trwania dostępu do książki w miesiącach (jako string).
+### `get_total_books()`
+**Opis:** Zwraca całkowitą liczbę książek w bazie danych.
 
-#### Zwracane wartości
-Funkcja zwraca słownik zawierający:
-
-- **code** (*int*): Kod HTTP-stylu. `200` jeśli zakup został zarejestrowany pomyślnie.
-- **message** (*str*): Komunikat informujący o wyniku operacji.
-
-#### Przykład użycia
+**Zwraca:**
 ```python
-# Pobierz dane książki
-book_result = get_book("5")
-if book_result["code"] == 200:
-    book_data = book_result["data"][0]
-    # Przeprowadź zakup
-    result = buy_book(3, book_data, "6")
-    print(result["code"])
+{
+    "code": int,          # 200 (sukces), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": int           # Liczba książek
+}
+```
+
+---
+
+### `get_books_by_author(author)`
+**Opis:** Zwraca wszystkie książki danego autora.
+
+**Parametry:**
+- `author` (str): Nazwa autora
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (brak wyników), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek z danymi książek
+}
+```
+
+---
+
+### `get_ebooks_unavailable()`
+**Opis:** Zwraca liczbę książek niedostępnych w magazynie (stock = 0).
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": int           # Liczba niedostępnych książek
+}
+```
+
+---
+
+### `get_total_customers()`
+**Opis:** Zwraca całkowitą liczbę klientów.
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": int           # Liczba klientów
+}
+```
+
+---
+
+### `get_total_purchases()`
+**Opis:** Zwraca całkowitą liczbę zakupów.
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": int           # Liczba zakupów
+}
+```
+
+---
+
+### `get_popular_books(limit=5)`
+**Opis:** Zwraca najpopularniejsze książki na podstawie liczby sprzedanych egzemplarzy.
+
+**Parametry:**
+- `limit` (int, optional): Maksymalna liczba zwracanych książek (domyślnie 5)
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (brak danych), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek (Title, Author, TotalQuantitySold)
+}
+```
+
+---
+
+### `get_recent_books(limit=5)`
+**Opis:** Zwraca ostatnio dodane książki.
+
+**Parametry:**
+- `limit` (int, optional): Maksymalna liczba zwracanych książek (domyślnie 5)
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (brak danych), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek (BookID, Title, Author, DateAdded)
+}
+```
+
+---
+
+### `get_books_by_genre(genre)`
+**Opis:** Zwraca wszystkie książki danego gatunku (częściowe dopasowanie).
+
+**Parametry:**
+- `genre` (str): Nazwa gatunku
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (brak wyników), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek z pełnymi danymi książek
+}
+```
+
+---
+
+### `get_revenue_statistics()`
+**Opis:** Zwraca statystyki przychodów.
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": {
+        "total_revenue": float,     # Całkowity przychód
+        "monthly_revenue": float    # Przychód z ostatnich 30 dni
+    }
+}
+```
+
+---
+
+### `get_low_stock_books(threshold=10)`
+**Opis:** Zwraca książki z niskim stanem magazynowym.
+
+**Parametry:**
+- `threshold` (int, optional): Próg niskiego stanu (domyślnie 10)
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (brak wyników), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek (BookID, Title, Author, Stock)
+}
+```
+
+---
+
+### `get_purchase_history(start_date=None, end_date=None)`
+**Opis:** Zwraca historię zakupów z opcjonalnym filtrem dat.
+
+**Parametry:**
+- `start_date` (str, optional): Data początkowa (format: YYYY-MM-DD)
+- `end_date` (str, optional): Data końcowa (format: YYYY-MM-DD)
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (brak danych), 500 (błąd bazy)
+    "message": str,       # Komunikat o wyniku operacji
+    "data": list          # Lista krotek (PurchaseID, CustomerName, BookTitle, Quantity, PurchaseDate, TotalPrice)
+}
+```
+
+**Uwaga:** Bez filtra dat zwraca maksymalnie 100 ostatnich zakupów.
+
+---
+
+## Zarządzanie Plikami
+
+### `export_data(table_name, filename=None)`
+**Opis:** Eksportuje dane z podanej tabeli do pliku CSV w folderze DATABASE.
+
+**Parametry:**
+- `table_name` (str): Nazwa tabeli ('Customers', 'Books', 'Purchases')
+- `filename` (str, optional): Nazwa pliku CSV (domyślnie: 'nazwa_tabeli.csv')
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 404 (błąd bazy), 500 (błąd ogólny)
+    "message": str        # Komunikat z ścieżką pliku lub błędem
+}
+```
+
+---
+
+### `import_data(table_name, filename=None)`
+**Opis:** Importuje dane z pliku CSV z folderu DATABASE do podanej tabeli.
+
+**Parametry:**
+- `table_name` (str): Nazwa tabeli ('Customers', 'Books', 'Purchases')
+- `filename` (str, optional): Nazwa pliku CSV (domyślnie: 'nazwa_tabeli.csv')
+
+**Zwraca:**
+```python
+{
+    "code": int,          # 200 (sukces), 400 (błąd walidacji), 404 (brak pliku), 500 (błąd ogólny)
+    "message": str        # Komunikat o wyniku operacji
+}
+```
+
+**Wymagane kolumny CSV:**
+
+**Customers:**
+- CustomerID, Name, Email
+
+**Books:**
+- Title, Author, Genre, Price, Stock, DateAdded
+
+**Purchases:**
+- CustomerID, BookID, Quantity, PurchaseDate
+
+**Uwagi dotyczące importu:**
+- Duplikaty email w Customers są pomijane z ostrzeżeniem
+- Książki z tym samym tytułem i autorem są aktualizowane
+- Zakupy z nieistniejącymi CustomerID/BookID są pomijane
+- Nieprawidłowe daty są zastępowane bieżącą datą
+
+---
+
+## Narzędzia Pomocnicze
+
+### `generate_customer_id()`
+**Opis:** Generuje unikalny UUID dla nowego klienta.
+
+**Zwraca:**
+- `str`: Unikalny identyfikator UUID w formacie string
+
+---
+
+### `validate_email(email)`
+**Opis:** Podstawowa walidacja adresu email.
+
+**Parametry:**
+- `email` (str): Adres email do walidacji
+
+**Zwraca:**
+- `bool`: True jeśli email jest poprawny, False w przeciwnym razie
+
+**Wzorzec walidacji:**
+```regex
+^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
+```
+
+---
+
+### `initialize_database()`
+**Opis:** Inicjalizuje bazę danych: tworzy folder DATABASE, plik bazy danych i tabele jeśli nie istnieją.
+
+**Tworzone tabele:**
+- **Customers**: CustomerID (TEXT, PK), Name (TEXT), Email (TEXT, UNIQUE)
+- **Books**: BookID (INTEGER, PK, AUTOINCREMENT), Title, Author, Genre, Price, Stock, DateAdded
+- **Purchases**: PurchaseID (INTEGER, PK, AUTOINCREMENT), CustomerID (FK), BookID (FK), Quantity, PurchaseDate
+
+---
+
+### `log_performance(func)` (Dekorator)
+**Opis:** Dekorator logujący czas wykonania funkcji. Używany z funkcją `add_book()`.
+
+**Działanie:**
+- Mierzy czas wykonania funkcji
+- Wypisuje komunikat z czasem wykonania w sekundach
+- Zwraca oryginalny wynik funkcji
+
+---
+
+## Struktury Danych
+
+### Książka (Books)
+```python
+(
+    BookID: int,           # Unikalny identyfikator (auto-increment)
+    Title: str,            # Tytuł książki
+    Author: str,           # Autor książki
+    Genre: str,            # Gatunek książki
+    Price: float,          # Cena książki
+    Stock: int,            # Stan magazynowy
+    DateAdded: str         # Data dodania (YYYY-MM-DD HH:MM:SS)
+)
+```
+
+### Klient (Customers)
+```python
+(
+    CustomerID: str,       # Unikalny UUID
+    Name: str,             # Imię i nazwisko
+    Email: str             # Adres email (unikalny)
+)
+```
+
+### Zakup (Purchases)
+```python
+(
+    PurchaseID: int,       # Unikalny identyfikator (auto-increment)
+    CustomerID: str,       # ID klienta (FK)
+    BookID: int,           # ID książki (FK)
+    Quantity: int,         # Liczba kupowanych egzemplarzy
+    PurchaseDate: str      # Data zakupu (YYYY-MM-DD HH:MM:SS)
+)
+```
+
+---
+
+## Kody Odpowiedzi
+
+| Kod | Znaczenie | Opis |
+|-----|-----------|------|
+| 200 | OK | Operacja zakończona sukcesem |
+| 201 | Created | Nowy rekord został utworzony |
+| 400 | Bad Request | Błąd walidacji danych wejściowych |
+| 404 | Not Found | Nie znaleziono wymaganych danych |
+| 409 | Conflict | Konflikt danych (np. duplikat email) |
+| 500 | Internal Server Error | Błąd bazy danych lub nieoczekiwany błąd |
+
+---
+
+## Konfiguracja Ścieżek
+
+```python
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+FILE_DIR = os.path.join(BASE_DIR, "DATABASE")
+DB_PATH = os.path.join(BASE_DIR, "DATABASE", "bookstore_main.db")
+```
+
+**Struktura folderów:**
+```
+projekt/
+├── DATABASE/
+│   ├── bookstore_main.db
+│   ├── customers.csv
+│   ├── books.csv
+│   └── purchases.csv
+└── bookstore/
+    ├── book_Manager.py
+    ├── customer_Manager.py
+    ├── monitor.py
+    ├── file_manager.py
+    └── utilities.py
+```
+
+---
+
+## Obsługa Błędów
+
+Wszystkie funkcje implementują obsługę błędów zgodnie z następującym wzorcem:
+
+1. **Połączenie z bazą danych** - w bloku try-finally z automatycznym zamykaniem połączenia
+2. **Walidacja danych wejściowych** - sprawdzanie wymaganych pól i typów danych
+3. **Transakcje atomowe** - dla operacji modyfikujących wiele tabel (usuwanie klienta, zakup książki)
+4. **Rollback** - w przypadku błędów podczas transakcji
+5. **Szczegółowe komunikaty błędów** - ułatwiające debugowanie
+
+Przykład struktury odpowiedzi błędu:
+```python
+{
+    "code": 500,
+    "message": "Błąd bazy danych podczas operacji: szczegóły błędu"
+}
 ```

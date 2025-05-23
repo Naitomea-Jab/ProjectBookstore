@@ -1,111 +1,323 @@
 # monitor.py
-from datetime import datetime
-from bookstore.utilities import FILE_DIR
-from bookstore.book_Manager import get_book
-import os
-import re
-from collections import Counter
+import sqlite3
+from datetime import datetime, timedelta
 
-def get_total_books(conn):
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM book")
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": cursor.fetchall()[0][0]
-    }
+from bookstore.utilities import DB_PATH  # Import DB_PATH
 
-def get_books_by_author(conn, author):
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM book WHERE author = ?", (author,))
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": cursor.fetchall()
-    }
 
-def get_ebooks_unavailable(conn):
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM book WHERE NO_EBOOK_AVAILABLE < 1")
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": cursor.fetchall()
-    }
+def get_total_books():
+    """Zwraca całkowitą liczbę książek w bazie danych."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM Books")
+        return {
+            "code": 200,
+            "message": "OK",
+            "data": cursor.fetchone()[0]
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania całkowitej liczby książek: {e}",
+            "data": 0
+        }
+    finally:
+        if conn:
+            conn.close()
 
-def get_total_customers(conn):
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM customer")
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": cursor.fetchall()[0][0]
-    }
 
-def get_total_purchases(conn, customer_data):
-    filename = f"{customer_data}.txt"
-    file_path = os.path.join(FILE_DIR, filename)
-    with open(file_path, 'r') as file:
-        line_count = sum(1 for line in file)
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": line_count
-    }
+def get_books_by_author(author):
+    """Zwraca wszystkie książki danego autora."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Books WHERE Author = ?", (author,))
+        books = cursor.fetchall()
+        return {
+            "code": 200 if books else 404,
+            "message": "OK" if books else "Brak książek tego autora.",
+            "data": books
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania książek według autora: {e}",
+            "data": []
+        }
+    finally:
+        if conn:
+            conn.close()
 
-def get_most_popular_books(conn, amount=3):
-    cursor = conn.cursor()
-    book_counter = Counter()
-    #Get list of all ID's from all files, then count them using counter
-    for filename in os.listdir(FILE_DIR):
-        if filename.endswith('.txt'):
-            file_path = os.path.join(FILE_DIR, filename)
-            book_ids = []
-            pattern = r"BookID:\s*(\d+)"
 
-            with open(file_path, 'r') as file:
-                content = file.read()
-                book_ids = re.findall(pattern, content)
+def get_ebooks_unavailable():
+    """Zwraca liczbę książek, które są niedostępne (stock = 0)."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM Books WHERE Stock = 0")
+        return {
+            "code": 200,
+            "message": "OK",
+            "data": cursor.fetchone()[0]
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania niedostępnych książek: {e}",
+            "data": 0
+        }
+    finally:
+        if conn:
+            conn.close()
 
-            book_counter.update(book_ids)
 
-    sorted_books = book_counter.most_common(amount)
-    final_results = []
+def get_total_customers():
+    """Zwraca całkowitą liczbę klientów."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM Customers")
+        return {
+            "code": 200,
+            "message": "OK",
+            "data": cursor.fetchone()[0]
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania całkowitej liczby klientów: {e}",
+            "data": 0
+        }
+    finally:
+        if conn:
+            conn.close()
 
-    for i in range(amount):
-        book_id = sorted_books[i][0]
-        cursor.execute("SELECT * FROM book WHERE ID = ?", (book_id,))
-        result = cursor.fetchone()
-        if result:
-            result_with_number = result + (sorted_books[i][1],)
-            final_results.append(result_with_number)
 
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": final_results
-    }
+def get_total_purchases():
+    """Zwraca całkowitą liczbę zakupów."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM Purchases")
+        return {
+            "code": 200,
+            "message": "OK",
+            "data": cursor.fetchone()[0]
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania całkowitej liczby zakupów: {e}",
+            "data": 0
+        }
+    finally:
+        if conn:
+            conn.close()
 
-def get_newest_books(conn, last_n_days=30):
-    current_date = datetime.now()
-    result = get_book()
-    books_newer_than_n = []
-    for book in result["data"]:
-        book_creation_time = datetime.strptime(book[4], "%Y-%m-%d")
-        diff = current_date - book_creation_time
-        if diff.days < last_n_days:
-            books_newer_than_n.append(book)
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": tuple(books_newer_than_n)
-    }
 
-def get_customer_countries(conn):
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*), COUNTRY FROM address GROUP BY COUNTRY ORDER BY COUNT(*) DESC")
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": cursor.fetchall()
-    }
+def get_popular_books(limit=5):
+    """Zwraca najpopularniejsze książki na podstawie liczby zakupów."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+                       SELECT b.Title, b.Author, SUM(p.Quantity) as TotalQuantitySold
+                       FROM Purchases p
+                                JOIN Books b ON p.BookID = b.BookID
+                       GROUP BY b.BookID
+                       ORDER BY TotalQuantitySold DESC
+                       LIMIT ?;
+                       """, (limit,))
+        books = cursor.fetchall()
+        return {
+            "code": 200 if books else 404,
+            "message": "OK" if books else "Brak danych o popularnych książkach.",
+            "data": books
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania popularnych książek: {e}",
+            "data": []
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_recent_books(limit=5):
+    """Zwraca ostatnio dodane książki."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT BookID, Title, Author, DateAdded FROM Books ORDER BY DateAdded DESC LIMIT ?;", (limit,))
+        books = cursor.fetchall()
+        return {
+            "code": 200 if books else 404,
+            "message": "OK" if books else "Brak danych o najnowszych książkach.",
+            "data": books
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania najnowszych książek: {e}",
+            "data": []
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_books_by_genre(genre):
+    """Zwraca wszystkie książki danego gatunku."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM Books WHERE Genre LIKE ?;", (f"%{genre}%",))
+        books = cursor.fetchall()
+        return {
+            "code": 200 if books else 404,
+            "message": "OK" if books else f"Brak książek w gatunku '{genre}'.",
+            "data": books
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania książek według gatunku: {e}",
+            "data": []
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_revenue_statistics():
+    """Zwraca statystyki przychodów (całkowity przychód, przychód z ostatnich 30 dni)."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Całkowity przychód
+        cursor.execute("""
+                       SELECT SUM(p.Quantity * b.Price)
+                       FROM Purchases p
+                                JOIN Books b ON p.BookID = b.BookID;
+                       """)
+        total_revenue = cursor.fetchone()[0] or 0.0
+
+        # Przychód z ostatnich 30 dni
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute("""
+                       SELECT SUM(p.Quantity * b.Price)
+                       FROM Purchases p
+                                JOIN Books b ON p.BookID = b.BookID
+                       WHERE p.PurchaseDate >= ?;
+                       """, (thirty_days_ago,))
+        monthly_revenue = cursor.fetchone()[0] or 0.0
+
+        return {
+            "code": 200,
+            "message": "OK",
+            "data": {
+                "total_revenue": total_revenue,
+                "monthly_revenue": monthly_revenue
+            }
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania statystyk przychodów: {e}",
+            "data": {"total_revenue": 0.0, "monthly_revenue": 0.0}
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_low_stock_books(threshold=10):
+    """Zwraca książki z niskim stanem magazynowym (poniżej progu)."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT BookID, Title, Author, Stock FROM Books WHERE Stock > 0 AND Stock <= ? ORDER BY Stock ASC;",
+            (threshold,))
+        books = cursor.fetchall()
+        return {
+            "code": 200 if books else 404,
+            "message": "OK" if books else "Brak książek z niskim stanem magazynowym.",
+            "data": books
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania książek z niskim stanem magazynowym: {e}",
+            "data": []
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_purchase_history(start_date=None, end_date=None):
+    """Zwraca historię zakupów, opcjonalnie z filtrem daty."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        if start_date and end_date:
+            cursor.execute("""
+                           SELECT p.PurchaseID,
+                                  c.Name,
+                                  b.Title,
+                                  p.Quantity,
+                                  p.PurchaseDate,
+                                  (p.Quantity * b.Price) as TotalPrice
+                           FROM Purchases p
+                                    JOIN Customers c ON p.CustomerID = c.CustomerID
+                                    JOIN Books b ON p.BookID = b.BookID
+                           WHERE DATE(p.PurchaseDate) BETWEEN ? AND ?
+                           ORDER BY p.PurchaseDate DESC
+                           """, (start_date, end_date))
+        else:
+            cursor.execute("""
+                           SELECT p.PurchaseID,
+                                  c.Name,
+                                  b.Title,
+                                  p.Quantity,
+                                  p.PurchaseDate,
+                                  (p.Quantity * b.Price) as TotalPrice
+                           FROM Purchases p
+                                    JOIN Customers c ON p.CustomerID = c.CustomerID
+                                    JOIN Books b ON p.BookID = b.BookID
+                           ORDER BY p.PurchaseDate DESC
+                           LIMIT 100
+                           """)
+
+        purchases = cursor.fetchall()
+        return {
+            "code": 200 if purchases else 404,
+            "message": "OK" if purchases else "Brak historii zakupów.",
+            "data": purchases
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania historii zakupów: {e}",
+            "data": []
+        }
+    finally:
+        if conn:
+            conn.close()
