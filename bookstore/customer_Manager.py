@@ -1,9 +1,8 @@
 # customer_Manager.py
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import sqlite3
-from bookstore.utilities import DB_PATH, FILE_DIR,get_new_customer_id
-import os
+from bookstore.utilities import DB_PATH, generate_customer_id
+from datetime import datetime
+
 
 def get_customers(data=None):
     """
@@ -23,241 +22,298 @@ def get_customers(data=None):
 
             - data (list, jeżeli kod = 200): Lista krotek zawierających dane o klientach. Zawiera pola:
 
-                - ID (int): ID klienta.
+                - CustomerID (str): ID klienta.
 
-                - NAME (str): Imię i nazwisko klienta.
+                - Name (str): Imię i nazwisko klienta.
 
-                - E-MAIL (str): Adres email klienta.
-
-                - PHONE (str): Numer telefonu klienta.
-
-                - CREATED (str): Data utworzenia klienta.
-
-                - UPDATED (str): Data ostatniej aktualizacji klienta.
+                - Email (str): Adres email klienta.
     """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    if data is None:
-        cursor.execute("SELECT * FROM customer;")
-    elif data.isdigit():
-        cursor.execute("SELECT * FROM customer WHERE ID = ?;", (data,))
-    else:
-        cursor.execute("SELECT * FROM customer WHERE NAME = ?;", (data,))
+        if data is None:
+            cursor.execute("SELECT * FROM Customers;")
+        elif len(data) == 36 and '-' in data:  # Assume UUID format for ID
+            cursor.execute("SELECT * FROM Customers WHERE CustomerID = ?;", (data,))
+        else:  # Assume it's a name
+            cursor.execute("SELECT * FROM Customers WHERE Name LIKE ?;", (f"%{data}%",))
 
-    data = cursor.fetchall()
-    if not data:
-        conn.close()
-        return {
-            "code": 404,
-            "message": "Nie znaleziono klienta do wypisania."
-        }
-    conn.close()
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": data
-    }
+        customers = cursor.fetchall()
 
-def get_addresses(data=None):
-    """
-    Pobiera adresy klientów z bazy danych. Można pobrać wszystkie adresy, adres dla
-    określonego ID klienta lub adres dla klienta o określonym imieniu i nazwisku.
-
-    Args:
-        data (str, optional): ID klienta (jako string) lub imię i nazwisko klienta (jako string).
-                              Jeśli brak argumentu (domyślnie None), pobierane są wszystkie adresy.
-
-    Returns:
-        dict: Słownik zawierający:
-
-            - code (int): Kod HTTP. 200 jeśli adresy zostały znalezione, 404 jeśli brak wyników.
-
-            - message (str): Komunikat o wyniku operacji (np. "Znaleziono adresy" lub "Brak adresów").
-
-            - data (list, jeżeli kod = 200): Lista krotek zawierających dane o adresach. Zawiera pola:
-
-                - ID (int): ID klienta, do którego należy adres.
-
-                - STREET (str): Nazwa ulicy.
-
-                - CITY (str): Nazwa miasta.
-
-                - COUNTRY (str): Nazwa kraju.
-    """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    if data is None:
-        cursor.execute("SELECT * FROM address;")
-    elif not data.isdigit():
-        cursor.execute("SELECT ID FROM customer WHERE NAME = ?;", (data,))
-        result = cursor.fetchone()
-        if result:
-            data = result[0]
+        if customers:
+            return {
+                "code": 200,
+                "message": "Znaleziono klientów.",
+                "data": customers
+            }
         else:
-            conn.close()
             return {
                 "code": 404,
-                "message": "Nie znaleziono adresu do wypisania."
+                "message": "Brak klientów spełniających kryteria."
             }
-        cursor.execute("SELECT * FROM address WHERE ID = ?;", (data,))
-    else:
-        cursor.execute("SELECT * FROM address WHERE ID = ?;", (data,))
-    data = cursor.fetchall()
-    if not data:
-        conn.close()
+    except sqlite3.Error as e:
         return {
-            "code": 404,
-            "message": "Nie znaleziono adresu do wypisania."
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania klientów: {e}"
         }
-    conn.close()
-    return {
-        "code": 200,
-        "message": "OK",
-        "data": data
-    }
+    finally:
+        if conn:
+            conn.close()
 
-def register_customer(clientInfo, addressInfo):
+
+def register_customer(clientInfo):
     """
-      Rejestruje nowego klienta w bazie danych wraz z jego adresem.
+    Rejestruje nowego klienta w bazie danych.
 
-      Args:
-          clientInfo (list): Lista zawierająca informacje o kliencie w kolejności:
+    Args:
+        clientInfo (dict): Słownik zawierający informacje o kliencie:
+                           - Name (str): Imię i nazwisko klienta.
+                           - Email (str): Adres email klienta.
 
-              - name (str): Imię i nazwisko klienta.
+    Returns:
+        dict: Słownik zawierający kod odpowiedzi i komunikat.
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-              - email (str): Adres email klienta.
+        name = clientInfo.get('Name')
+        email = clientInfo.get('Email')
 
-              - phone (str): Numer telefonu klienta.
-          addressInfo (list): Lista zawierająca informacje o adresie klienta w kolejności:
+        if not all([name, email]):
+            return {
+                "code": 400,
+                "message": "Brakuje wymaganych pól: Imię i nazwisko, Email."
+            }
+        cursor.execute("SELECT CustomerID FROM Customers WHERE Email = ?;", (email,))
+        if cursor.fetchone():
+            return {
+                "code": 409,  # Conflict
+                "message": "Klient z podanym adresem email już istnieje."
+            }
 
-              - street (str): Nazwa ulicy.
+        customer_id = generate_customer_id()
+        cursor.execute("""
+                       INSERT INTO Customers (CustomerID, Name, Email)
+                       VALUES (?, ?, ?);
+                       """, (customer_id, name, email))
+        conn.commit()
+        return {
+            "code": 201,
+            "message": f"Klient '{name}' został pomyślnie zarejestrowany. ID: {customer_id}"
+        }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas rejestracji klienta: {e}"
+        }
+    finally:
+        if conn:
+            conn.close()
 
-              - city (str): Nazwa miasta.
-
-              - country (str): Nazwa kraju.
-
-      Returns:
-          dict: Słownik zawierający:
-
-              - code (int): Kod HTTP-stylu. 201 jeśli klient został zarejestrowany pomyślnie.
-
-              - message (str, opcjonalny): Komunikat informujący o wyniku operacji.
-      """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    client_id = get_new_customer_id(conn)
-    current_date = datetime.now().strftime("%Y-%m-%d")
-
-    name = clientInfo[0]
-    email = clientInfo[1]
-    phone = clientInfo[2]
-
-    cursor.execute(
-        "INSERT INTO customer (ID, NAME, 'E-MAIL', PHONE, CREATED, UPDATED) VALUES (?, ?, ?, ?, ?, ?);",
-        (client_id, name, email, phone, current_date, current_date)
-    )
-
-    street = addressInfo[0]
-    city = addressInfo[1]
-    country = addressInfo[2]
-
-    cursor.execute(
-        "INSERT INTO address (ID, STREET, CITY, COUNTRY) VALUES (?, ?, ?, ?);",
-        (client_id, street, city, country)
-    )
-
-    conn.commit()
-    conn.close()
-    filename = f"{client_id}.txt"
-    file_path = os.path.join(FILE_DIR, filename)
-    with open(file_path, "w") as file:
-        file.write("")
-    return {
-        "code": 201,
-        "message": "OK"
-    }
 
 def remove_customer(data):
     """
-      Usuwa klienta i jego adres z bazy danych na podstawie ID lub imienia i nazwiska.
+    Usuwa klienta z bazy danych wraz z jego zakupami.
 
-      Args:
-          data (str): ID klienta (liczba całkowita jako string) lub imię i nazwisko klienta (string) do usunięcia.
+    Args:
+        data (str): ID klienta (jako string) lub imię i nazwisko klienta (jako string).
 
-      Returns:
-          dict: Słownik zawierający:
+    Returns:
+        dict: Słownik zawierający kod odpowiedzi i komunikat.
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-              - code (int): Kod HTTP-stylu. 200 jeśli usunięto klienta, 404 jeśli nie znaleziono klienta.
-
-              - message (str): Komunikat opisujący wynik operacji.
-      """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    if not data.isdigit():
-        cursor.execute("SELECT ID FROM customer WHERE NAME = ?;", (data,))
-        result = cursor.fetchone()
-        if result:
-            data = result[0]
+        customer_id = None
+        if len(data) == 36 and '-' in data:  # UUID format
+            customer_id = data
         else:
-            conn.close()
+            cursor.execute("SELECT CustomerID FROM Customers WHERE Name = ?;", (data,))
+            result = cursor.fetchone()
+            if result:
+                customer_id = result[0]
+
+        if not customer_id:
             return {
                 "code": 404,
                 "message": "Nie znaleziono klienta do usunięcia."
             }
-    cursor.execute("DELETE FROM customer WHERE ID = ?;", (data,))
-    cursor.execute("DELETE FROM address WHERE ID = ?;", (data,))
 
-    deleted = cursor.rowcount
-    conn.commit()
-    conn.close()
-
-    if deleted > 0:
-        filename = f"{data}.txt"
-        file_path = os.path.join(FILE_DIR, filename)
-        os.remove(file_path)
+        conn.execute("BEGIN TRANSACTION;")
+        cursor.execute("DELETE FROM Purchases WHERE CustomerID = ?;", (customer_id,))
+        purchases_deleted = cursor.rowcount
+        cursor.execute("DELETE FROM Customers WHERE CustomerID = ?;", (customer_id,))
+        customer_deleted = cursor.rowcount
+        conn.commit()
         return {
             "code": 200,
-            "message": f"Usunięto klienta z bazy danych."
+            "message": f"Usunięto {customer_deleted} klienta i {purchases_deleted} zakupów z bazy danych."
         }
-    else:
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
         return {
-            "code": 404,
-            "message": "Nie znaleziono klienta do usunięcia."
+            "code": 500,
+            "message": f"Błąd bazy danych podczas usuwania klienta: {e}"
         }
+    finally:
+        if conn:
+            conn.close()
 
-def buy_book(client_id, book_data, duration):
+
+def buy_book(customer_data, book_data, quantity):
     """
-      Zakup książki przez klienta, zapisując informację o zakupie do pliku tekstowego klienta.
+    Obsługuje proces zakupu książki.
 
-      Args:
-          client_id (int): ID klienta dokonującego zakupu.
-          book_data (list): Lista zawierająca dane o książce (powinna zawierać ID i tytuł na indeksach 0 i 2).
-          duration (str): Czas trwania dostępu do książki w miesiącach (jako string).
+    Args:
+        customer_data (str): ID klienta lub imię i nazwisko.
+        book_data (str): ID książki lub tytuł książki.
+        quantity (int): Liczba kupowanych książek.
 
-      Returns:
-          dict: Słownik zawierający:
+    Returns:
+        dict: Słownik zawierający kod odpowiedzi i komunikat.
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        customer_id = None
+        if len(customer_data) == 36 and '-' in customer_data:  # UUID format
+            cursor.execute("SELECT CustomerID FROM Customers WHERE CustomerID = ?;", (customer_data,))
+            result = cursor.fetchone()
+            if result:
+                customer_id = result[0]
+        else:
+            cursor.execute("SELECT CustomerID FROM Customers WHERE Name = ?;", (customer_data,))
+            result = cursor.fetchone()
+            if result:
+                customer_id = result[0]
 
-              - code (int): Kod HTTP-stylu. 200 jeśli zakup został zarejestrowany pomyślnie.
+        if not customer_id:
+            return {
+                "code": 404,
+                "message": "Nie znaleziono klienta."
+            }
 
-              - message (str, opcjonalny): Komunikat informujący o wyniku operacji.
-      """
-    print(client_id)
-    print(book_data)
-    print(duration)
+        book_id = None
+        stock = 0
+        if str(book_data).isdigit():
+            cursor.execute("SELECT BookID, Stock, Price FROM Books WHERE BookID = ?;", (book_data,))
+            result = cursor.fetchone()
+            if result:
+                book_id, stock, price = result
+        else:
+            cursor.execute("SELECT BookID, Stock, Price FROM Books WHERE Title = ?;", (book_data,))
+            result = cursor.fetchone()
+            if result:
+                book_id, stock, price = result
 
-    date = datetime.now()
-    expiry_date = date + relativedelta(months=int(duration))
-    formated_date = date.strftime("%Y-%m-%d")
-    formated_expiry_date = expiry_date.strftime("%Y-%m-%d")
+        if not book_id:
+            return {
+                "code": 404,
+                "message": "Nie znaleziono książki."
+            }
 
-    filename = f"{client_id}.txt"
-    file_path = os.path.join(FILE_DIR, filename)
-    with open(file_path, "a") as file:
-        file.write(f"BookID: {book_data[0]}, Title: {book_data[2]}, PurchaseDate: {formated_date}, ExpiryDate: {formated_expiry_date};\n")
-    return {
-        "code": 200,
-        "message": "OK"
-    }
+        if stock < quantity:
+            return {
+                "code": 400,
+                "message": f"Brak wystarczającej ilości książek w magazynie. Dostępne: {stock}"
+            }
+
+        purchase_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute("""
+                       INSERT INTO Purchases (CustomerID, BookID, Quantity, PurchaseDate)
+                       VALUES (?, ?, ?, ?);
+                       """, (customer_id, book_id, quantity, purchase_date))
+
+        cursor.execute("UPDATE Books SET Stock = Stock - ? WHERE BookID = ?;", (quantity, book_id))
+
+        conn.commit()
+        return {
+            "code": 200,
+            "message": f"Zakup zrealizowany pomyślnie! Książka o ID {book_id} (Ilość: {quantity}) dla klienta o ID {customer_id}."
+        }
+    except sqlite3.Error as e:
+        if conn:
+            conn.rollback()
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas zakupu książki: {e}"
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_customer_purchases(customer_data):
+    """
+    Pobiera historię zakupów dla konkretnego klienta.
+
+    Args:
+        customer_data (str): ID klienta (jako string) lub imię i nazwisko klienta (jako string).
+
+    Returns:
+        dict: Słownik zawierający kod odpowiedzi i komunikat.
+            - code (int): Kod HTTP (200, 404, 500).
+            - message (str): Komunikat o wyniku operacji.
+            - data (list, jeżeli kod = 200): Lista krotek z danymi o zakupach.
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        customer_id = None
+        if len(customer_data) == 36 and '-' in customer_data:  # UUID format
+            cursor.execute("SELECT CustomerID FROM Customers WHERE CustomerID = ?;", (customer_data,))
+            result = cursor.fetchone()
+            if result:
+                customer_id = result[0]
+        else:
+            cursor.execute("SELECT CustomerID FROM Customers WHERE Name = ?;", (customer_data,))
+            result = cursor.fetchone()
+            if result:
+                customer_id = result[0]
+
+        if not customer_id:
+            return {
+                "code": 404,
+                "message": "Nie znaleziono klienta."
+            }
+
+        cursor.execute("""
+                       SELECT p.PurchaseID, c.Name, b.Title, p.Quantity, p.PurchaseDate, b.Price
+                       FROM Purchases p
+                                JOIN Books b ON p.BookID = b.BookID
+                                JOIN Customers c ON p.CustomerID = c.CustomerID
+                       WHERE p.CustomerID = ?
+                       ORDER BY p.PurchaseDate DESC;
+                       """, (customer_id,))
+
+        purchases = cursor.fetchall()
+
+        if purchases:
+            return {
+                "code": 200,
+                "message": "Znaleziono historię zakupów.",
+                "data": purchases
+            }
+        else:
+            return {
+                "code": 404,
+                "message": "Brak historii zakupów dla tego klienta."
+            }
+    except sqlite3.Error as e:
+        return {
+            "code": 500,
+            "message": f"Błąd bazy danych podczas pobierania historii zakupów klienta: {str(e)}"
+        }
+    finally:
+        if conn:
+            conn.close()
